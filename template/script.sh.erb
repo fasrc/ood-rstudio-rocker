@@ -1,0 +1,155 @@
+#
+# Start RStudio Server
+#
+
+# Singularity image from form.yml
+container_image=<%= context.r_version %>
+
+# Set working directory to home directory
+cd "${HOME}"
+
+set -x
+
+# Launch the RStudio Server
+echo "Starting up rserver..."
+
+# instead of setting session-timeout-minutes=0 in /etc/rstudio/rsession.conf
+# per section 5.2.2 (Session Timeout) in
+# https://docs.rstudio.com/ide/server-pro/r-sessions.html#user-and-group-profiles,
+# set (undocumented) environment variable gleaned from source code:
+# https://github.com/rstudio/rstudio/blob/master/src/cpp/server/ServerSessionManager.cpp#L111
+export SINGULARITYENV_RSTUDIO_SESSION_TIMEOUT=0
+
+R_HOME=$(singularity exec --containall ${container_image} R RHOME)
+
+# Need a unique /tmp for this job for /tmp/rstudio-rsession & /tmp/rstudio-server
+# Need writable /run/rstudio-server :
+#   https://discourse.osc.edu/t/unable-to-launch-fully-containerized-rstudio/948
+WORKDIR=/scratch/${USER}/${SLURM_JOB_ID}
+
+# use a different directory for each image to be safe...
+readonly image_tag=$(basename "${container_image##*:}" .sif)
+R_LIBS_USER=${HOME}/R/ifxrstudio/${image_tag}
+
+mkdir -m 700 -p ${WORKDIR}/tmp ${WORKDIR}/run "${R_LIBS_USER}"
+
+# add bind mounts to  tmp, run, rsession.sh, Renviron.site
+export SINGULARITY_BIND="${WORKDIR}/tmp:/tmp,${WORKDIR}/run:/run,${WORKDIR}/rsession.sh:/etc/rstudio/rsession.sh,${WORKDIR}/Renviron.site:${R_HOME}/etc/Renviron.site"
+
+readonly image_version=${image_tag#RELEASE_3_} 
+
+# https://github.com/rstudio/rstudio/issues/5449#issuecomment-534184951
+extra_options='--auth-timeout-minutes=0 --auth-stay-signed-in-days=30'
+
+# TODO: add comment for the purpose of this section
+mkdir -m 700 -p ${WORKDIR}/var/lib/rstudio-server 
+cat > ${WORKDIR}/database.conf <<END
+provider=sqlite
+directory=/var/lib/rstudio-server
+END
+# explicitly mount /sys to enable RStudio Server 1.4.1717 "Memory
+# Usage Report" & address startup warning:
+#     ERROR system error 2 (No # such file or directory)
+#     [path: /sys/fs/cgroup/memory/memory.limit_in_bytes]...
+export SINGULARITY_BIND="/sys:/sys,${WORKDIR}/database.conf:/etc/rstudio/database.conf,${WORKDIR}/var/lib/rstudio-server:/var/lib/rstudio-server,${SINGULARITY_BIND}"
+
+# https://github.com/grst/rstudio-server-conda/pull/18
+extra_options="--server-user $USER ${extra_options}"
+
+# create PYTHONUSERBASE inside R_LIBS_USER
+mkdir -p ${PYTHONUSERBASE=${R_LIBS_USER}/python-user-base}
+export PATH=${PYTHONUSERBASE}/bin:${PATH}
+
+# work around Ubuntu 22.04 / OpenBLAS 0.3.20 issue affecting Seurat (at least)
+# https://github.com/rocker-org/rocker-versioned2/issues/836
+# Does not impact docker.io/bioconductor/ml-verse:3.20 (Ubuntu 24.04 / OpenBLAS 0.3.26)
+if [ ${image_version} -le 19 ] && [ -e /sys/devices/cpu/caps/pmu_name ]
+then
+  read pmu_name < /sys/devices/cpu/caps/pmu_name
+  case ${pmu_name} in
+    sapphire_rapids) OPENBLAS_CORETYPE=SKYLAKEX ;;
+  esac
+fi
+
+# users can chose if starting from a fresh config or keep the default in HOME/.rstudio
+<%- if !context.custom_vanillaconf.to_i.zero? -%>
+mkdir -p ${WORKDIR}/rstudio $HOME/.local/share/rstudio
+export SINGULARITY_BIND="${WORKDIR}/rstudio:$HOME/.local/share/rstudio,${SINGULARITY_BIND}"
+<%- end -%>
+
+# Debian /usr/local/lib/R/etc/Renviron hard-codes R_LIBS_USER to /usr/local/lib/R/site-library :
+# https://github.com/rocker-org/rocker-versioned/issues/153
+# can override in /etc/R/Renviron.site
+cat >${WORKDIR}/Renviron.site <<END
+R_LIBS_USER=$R_LIBS_USER
+END
+
+# rsession needs to start with OMP_NUM_THREADS set to prevent OpenBLAS
+# (and any other OpenMP-enhanced libraries used by R) from spawning too many
+# threads. Renviron.site appears to be processed too late to prevent this (any
+# environment variables set therein are not in rsession's environment) is not
+# in the , so instead a wrapper script is created for rsession.
+#
+# Also set MKL_THREADING_LAYER per:
+# https://github.com/eddelbuettel/mkl4deb#set-an-environment-variable
+
+cat > ${WORKDIR}/rsession.sh <<END
+#!/bin/sh
+set -o xtrace
+export OMP_NUM_THREADS=${SLURM_JOB_CPUS_PER_NODE}
+export MKL_THREADING_LAYER=GNU
+# disable the pip cache to optimize disk space
+export PIP_NO_CACHE_DIR=off
+export RETICULATE_MINICONDA_ENABLED=FALSE
+if [ "${PYTHONUSERBASE:-}" ] # backwards compatibility w/ RELEASE_3_1[45]
+then
+  export PYTHONUSERBASE="${PYTHONUSERBASE}"
+  export PATH=\$(python -msite --user-base)/bin:\${PATH}
+  export PYTHONPATH="${PYTHONUSERBASE}"
+fi
+# pdflatex & tlmgr
+export PATH=/usr/local/texlive/bin/x86_64-linux:${PATH}
+${OPENBLAS_CORETYPE:+export OPENBLAS_CORETYPE=${OPENBLAS_CORETYPE}}
+${RETICULATE_PYTHON:+export RETICULATE_PYTHON=${RETICULATE_PYTHON}}
+exec /usr/lib/rstudio-server/bin/rsession "\${@}"
+END
+
+chmod +x ${WORKDIR}/rsession.sh
+
+# only on Cannon due to DSL1 only for Github Pilot
+# enable GitHub Copilot for RStudio Server >= 2023.09.0
+# https://docs.posit.co/ide/user/ide/guide/tools/copilot.html
+if [ ${image_version} -ge 18 ]
+then
+  echo 'copilot-enabled=1' > ${WORKDIR}/rsession.conf
+  export SINGULARITY_BIND="${WORKDIR}/rsession.conf:/etc/rstudio/rsession.conf,${SINGULARITY_BIND}"
+fi
+
+# bioconductor/bioconductor_docker:RELEASE_3_10 sets USER in Dockerfile:
+# https://github.com/Bioconductor/bioconductor_docker/blob/RELEASE_3_10/Dockerfile#L154
+#
+# Apparently, quay.io/singularity/docker2singularity:v3.5.1 then sets USER in
+# the /.singularity.d/env/10-docker.sh, which overrides any externally-set USER
+# (in the environment of the "singularity exec" commmand). To work around this,
+# setting USER in a shell command that invokes the rserver process
+ 
+# set oom_score_adj to 1000 in job script (parent) so it app is terminated in
+# the event the rsession (child) OOMs to avoid the appearance of the app
+# continuing to function in OOD/Slurm with a 502 Proxy error on reconnect
+#
+# we set the --nv parameter for a case when user request --gres=gpu:N via
+# slurm additional options. --nv does not affect CPU only jobs
+echo 1000 > /proc/self/oom_score_adj
+( 
+  echo 0 > /proc/self/oom_score_adj
+
+  singularity exec --nv --cleanenv \
+   "${container_image}" \
+   sh -c "USER=${USER} rserver \
+   --www-port ${port} \
+   --auth-none 0 \
+   --auth-encrypt-password 0 \
+   --auth-pam-helper-path=pam-helper \
+   ${extra_options} \
+   --rsession-path=/etc/rstudio/rsession.sh"
+)

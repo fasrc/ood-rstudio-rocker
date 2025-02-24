@@ -1,0 +1,94 @@
+---
+title: "RStudio Server"
+cluster: "odyssey3"
+attributes:
+  modules: null
+  custom_time:
+    label: "Allocated Time (expressed in MM , or HH:MM:SS , or DD-HH:MM)"
+    value: "04:00:00"
+    widget: text_field
+    help: |
+      *sbatch -t, --time=\<time\>*
+  bc_queue: 
+    value: "test"
+    help: |
+      *sbatch -p, --partition=\<partition_names\>*
+
+      [Slurm partition](https://www.rc.fas.harvard.edu/resources/running-jobs/#Slurm_partitions) name (e.g., **shared** ), or comma-separated list of partition names (e.g., **shared,test** )
+  custom_email_address:
+    label: (optional) email address for job status notification
+    widget: text_field
+  custom_memory_per_node:
+    label: Memory Allocation in GB
+    value: 8
+    min:   1
+    step:  1
+    max:   2000
+    widget: number_field
+    help: |
+      *sbatch --mem=\<size\>G*
+  custom_num_cores:
+    label: "Number of CPUs to allocate"
+    value: 2
+    min:   1
+    step:  1
+    widget: number_field
+    help: |
+      *sbatch -c, --cpus-per-task=\<ncpus\>*
+  r_version:
+    widget: select
+    label: "R version"
+    options:
+      - [ "R 4.4.1 (Bioconductor 3.19, RStudio 2024.04.2)", "/n/singularity_images/informatics/ifxrstudio/ifxrstudio:RELEASE_3_19.sif" ]
+      - [ "R 4.3.3 (Bioconductor 3.18, RStudio 2023.09.1)", "/n/singularity_images/informatics/ifxrstudio/ifxrstudio:RELEASE_3_18.sif" ]
+    help: |
+      This defines the version of R/Bioconductor you want to use.
+
+  custom_reservation:
+    label: "(optional) Slurm Reservation"
+    widget: text_field
+    help: |
+      *sbatch --reservation=\<name\>*
+
+      Leave blank if you do not have a Slurm reservation
+
+  bc_account:
+    label: "(optional) Slurm Account"
+    help: |
+      *sbatch -A, --account=\<account\>*
+
+      Leave blank if you do not have multiple Slurm accounts
+
+  custom_vanillaconf:
+    label: "Start rstudio with a new configuration"
+    widget: check_box
+    value: 1
+    help: |
+          **_Checking this box will start rstudio with a fresh configuration._** 
+          
+          This is useful if you need to run different instances at the same time with different configurations.<br> 
+          Leave the box unchecked if you want rstudio to start with the default configuration you have in your ~/.rstudio
+
+  extra_slurm:
+    label: Additional Slurm options
+    widget: text_field
+    help: |
+      additional slurm options (**long format option only**)<br>
+      Example :  --constraint=intel --exclusive
+
+      Please make sure the options you select are compatible with other fields in the form.<br>Also, please make sure you use **long format option only**<br>(e.g. --nodelist=holy7c24502 instead of -w holy7c24502)
+
+form:
+  - modules
+  - bc_queue
+  - custom_memory_per_node
+  - custom_num_cores
+  - custom_time
+  - r_version
+  - bc_email_on_started
+  - custom_email_address
+  - custom_reservation
+  - custom_vanillaconf
+  - bc_account
+  - extra_slurm
+
