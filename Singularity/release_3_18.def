@@ -1,0 +1,11 @@
+bootstrap: docker
+from: docker.io/bioconductor/ml-verse:RELEASE_3_18-R-4.3.3
+
+# work around https://github.com/rocker-org/rocker-versioned2/issues/836
+# Set here for command-line use (e.g. batch job); set in template/script.sh.erb for RStudio Server
+%environment
+  if grep -qs sapphire_rapids /sys/devices/cpu/caps/pmu_name
+  then
+    export OPENBLAS_CORETYPE=SKYLAKEX
+  fi
+
