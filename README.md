@@ -17,7 +17,7 @@ modifications are commented with a `site-specific` tag. For example, the file
 ```
   bc_queue:
 # site-specific: change default partition
-    value: "shared"
+    value: "test"
 ```
 
 List of files to edit:
