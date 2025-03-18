@@ -22,10 +22,11 @@ export SINGULARITYENV_RSTUDIO_SESSION_TIMEOUT=0
 
 R_HOME=$(singularity exec --containall ${container_image} R RHOME)
 
+# site-specific: may need to change temp dir
 # Need a unique /tmp for this job for /tmp/rstudio-rsession & /tmp/rstudio-server
 # Need writable /run/rstudio-server :
 #   https://discourse.osc.edu/t/unable-to-launch-fully-containerized-rstudio/948
-WORKDIR=/scratch/${USER}/${SLURM_JOB_ID}
+WORKDIR=${TMPDIR:-/tmp}/${USER}/${SLURM_JOB_ID}
 
 # use a different directory for each image to be safe...
 readonly image_tag=$(basename "${container_image##*:}" .sif)
@@ -40,6 +41,9 @@ readonly image_version=${image_tag#RELEASE_3_}
 
 # https://github.com/rstudio/rstudio/issues/5449#issuecomment-534184951
 extra_options='--auth-timeout-minutes=0 --auth-stay-signed-in-days=30'
+#
+# https://github.com/grst/rstudio-server-conda/pull/18
+extra_options="--server-user $USER ${extra_options}"
 
 # TODO: add comment for the purpose of this section
 mkdir -m 700 -p ${WORKDIR}/var/lib/rstudio-server 
@@ -52,9 +56,6 @@ END
 #     ERROR system error 2 (No # such file or directory)
 #     [path: /sys/fs/cgroup/memory/memory.limit_in_bytes]...
 export SINGULARITY_BIND="/sys:/sys,${WORKDIR}/database.conf:/etc/rstudio/database.conf,${WORKDIR}/var/lib/rstudio-server:/var/lib/rstudio-server,${SINGULARITY_BIND}"
-
-# https://github.com/grst/rstudio-server-conda/pull/18
-extra_options="--server-user $USER ${extra_options}"
 
 # create PYTHONUSERBASE inside R_LIBS_USER
 mkdir -p ${PYTHONUSERBASE=${R_LIBS_USER}/python-user-base}
@@ -93,6 +94,7 @@ END
 # Also set MKL_THREADING_LAYER per:
 # https://github.com/eddelbuettel/mkl4deb#set-an-environment-variable
 
+# TODO: is backwards compatibility section necessary?
 cat > ${WORKDIR}/rsession.sh <<END
 #!/bin/sh
 set -o xtrace
@@ -116,23 +118,16 @@ END
 
 chmod +x ${WORKDIR}/rsession.sh
 
-# only on Cannon due to DSL1 only for Github Pilot
-# enable GitHub Copilot for RStudio Server >= 2023.09.0
-# https://docs.posit.co/ide/user/ide/guide/tools/copilot.html
-if [ ${image_version} -ge 18 ]
-then
-  echo 'copilot-enabled=1' > ${WORKDIR}/rsession.conf
-  export SINGULARITY_BIND="${WORKDIR}/rsession.conf:/etc/rstudio/rsession.conf,${SINGULARITY_BIND}"
-fi
+# site-specific: this enables Github Pilot. Use caution with data security
+## enable GitHub Copilot for RStudio Server >= 2023.09.0
+## https://docs.posit.co/ide/user/ide/guide/tools/copilot.html
+#if [ ${image_version} -ge 18 ]
+#then
+#  echo 'copilot-enabled=1' > ${WORKDIR}/rsession.conf
+#  export SINGULARITY_BIND="${WORKDIR}/rsession.conf:/etc/rstudio/rsession.conf,${SINGULARITY_BIND}"
+#fi
 
-# bioconductor/bioconductor_docker:RELEASE_3_10 sets USER in Dockerfile:
-# https://github.com/Bioconductor/bioconductor_docker/blob/RELEASE_3_10/Dockerfile#L154
-#
-# Apparently, quay.io/singularity/docker2singularity:v3.5.1 then sets USER in
-# the /.singularity.d/env/10-docker.sh, which overrides any externally-set USER
-# (in the environment of the "singularity exec" commmand). To work around this,
-# setting USER in a shell command that invokes the rserver process
- 
+# site-specific: if you don't want to handle children processes out-of-memory (OOM) errors, then only use the `singularity exec` command
 # set oom_score_adj to 1000 in job script (parent) so it app is terminated in
 # the event the rsession (child) OOMs to avoid the appearance of the app
 # continuing to function in OOD/Slurm with a 502 Proxy error on reconnect

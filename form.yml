@@ -1,5 +1,6 @@
 ---
 title: "RStudio Server"
+# site-specific: change cluster name
 cluster: "odyssey3"
 attributes:
   modules: null
@@ -9,7 +10,8 @@ attributes:
     widget: text_field
     help: |
       *sbatch -t, --time=\<time\>*
-  bc_queue: 
+  bc_queue:
+# site-specific: change default partition
     value: "test"
     help: |
       *sbatch -p, --partition=\<partition_names\>*
@@ -38,12 +40,12 @@ attributes:
   r_version:
     widget: select
     label: "R version"
+# site-specific: change versions and location of containers
     options:
       - [ "R 4.4.1 (Bioconductor 3.19, RStudio 2024.04.2)", "/n/singularity_images/informatics/ifxrstudio/ifxrstudio:RELEASE_3_19.sif" ]
       - [ "R 4.3.3 (Bioconductor 3.18, RStudio 2023.09.1)", "/n/singularity_images/informatics/ifxrstudio/ifxrstudio:RELEASE_3_18.sif" ]
     help: |
       This defines the version of R/Bioconductor you want to use.
-
   custom_reservation:
     label: "(optional) Slurm Reservation"
     widget: text_field
@@ -51,14 +53,12 @@ attributes:
       *sbatch --reservation=\<name\>*
 
       Leave blank if you do not have a Slurm reservation
-
   bc_account:
     label: "(optional) Slurm Account"
     help: |
       *sbatch -A, --account=\<account\>*
 
       Leave blank if you do not have multiple Slurm accounts
-
   custom_vanillaconf:
     label: "Start rstudio with a new configuration"
     widget: check_box
@@ -68,7 +68,6 @@ attributes:
           
           This is useful if you need to run different instances at the same time with different configurations.<br> 
           Leave the box unchecked if you want rstudio to start with the default configuration you have in your ~/.rstudio
-
   extra_slurm:
     label: Additional Slurm options
     widget: text_field
@@ -91,4 +90,3 @@ form:
   - custom_vanillaconf
   - bc_account
   - extra_slurm
-
