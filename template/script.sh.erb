@@ -28,6 +28,7 @@ R_HOME=$(singularity exec --containall ${container_image} R RHOME)
 #   https://discourse.osc.edu/t/unable-to-launch-fully-containerized-rstudio/948
 WORKDIR=${TMPDIR:-/tmp}/${USER}/${SLURM_JOB_ID}
 
+# site-specific: may need to change to a different dir
 # use a different directory for each image to be safe...
 readonly image_tag=$(basename "${container_image##*:}" .sif)
 R_LIBS_USER=${HOME}/R/ifxrstudio/${image_tag}
