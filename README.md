@@ -1,5 +1,5 @@
 > [!NOTE]
-> This repo is archived, please refer to [https://github.com/fasrc/ood-jupyter](https://github.com/fasrc/ood-containerized-rstudio-server) for our current equivalent.
+> This repo is archived, please refer to [https://github.com/fasrc/ood-containerized-rstudio-server](https://github.com/fasrc/ood-containerized-rstudio-server) for our current equivalent.
 > 
 
 # ood-rstudio-rocker
